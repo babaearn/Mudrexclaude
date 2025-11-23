@@ -5,7 +5,10 @@ const axios = require('axios');
 const config = {
   priceBaseUrl: process.env.PRICE_API_URL || 'https://price.mudrex.com',
   wsUrl: process.env.WS_URL || 'wss://price.mudrex.com/api/v1/klines',
-  webhookUrl: process.env.WEBHOOK_URL,
+
+  // Telegram configuration
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+  telegramChatId: process.env.TELEGRAM_CHAT_ID,
 
   // Alert thresholds
   assets: (process.env.ASSETS || 'BTC,ETH,SOL').split(','),
@@ -45,13 +48,16 @@ function markAlertSent(alertKey) {
 async function sendAlert(message) {
   console.log('ALERT:', message);
 
-  if (config.webhookUrl) {
+  if (config.telegramBotToken && config.telegramChatId) {
     try {
-      await axios.post(config.webhookUrl, {
-        content: message
+      const telegramUrl = `https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`;
+      await axios.post(telegramUrl, {
+        chat_id: config.telegramChatId,
+        text: message,
+        parse_mode: 'HTML'
       });
     } catch (error) {
-      console.error('Failed to send webhook:', error.message);
+      console.error('Failed to send Telegram message:', error.message);
     }
   }
 }
@@ -268,8 +274,8 @@ async function main() {
   console.log('Volume spike multiplier:', config.volumeSpikeMultiplier);
   console.log('Price spike percent:', config.priceSpikePercent);
 
-  if (!config.webhookUrl) {
-    console.warn('WARNING: No WEBHOOK_URL configured. Alerts will only be logged.');
+  if (!config.telegramBotToken || !config.telegramChatId) {
+    console.warn('WARNING: Telegram not configured. Alerts will only be logged.');
   }
 
   // Initialize with current prices

@@ -22,12 +22,21 @@
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `WEBHOOK_URL` | Discord/Slack webhook URL | Required |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot API token | Required |
+| `TELEGRAM_CHAT_ID` | Telegram chat/group/channel ID | Required |
 | `ASSETS` | Comma-separated assets to monitor | `BTC,ETH,SOL` |
 | `QUOTE_CURRENCY` | Quote currency | `USDT` |
 | `PRICE_THRESHOLDS` | JSON object with price thresholds | `{}` |
 | `VOLUME_SPIKE_MULTIPLIER` | Alert when volume exceeds X times average | `2.5` |
 | `PRICE_SPIKE_PERCENT` | Alert on sudden % change | `5.0` |
+
+### Telegram Setup
+
+1. Create a bot via [@BotFather](https://t.me/BotFather)
+2. Get your bot token
+3. Get chat ID:
+   - For personal: message [@userinfobot](https://t.me/userinfobot)
+   - For group: add bot to group, send a message, check `https://api.telegram.org/bot<TOKEN>/getUpdates`
 
 ### Example PRICE_THRESHOLDS
 
