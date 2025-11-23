@@ -1,0 +1,17 @@
+{
+  "name": "price-alert-service",
+  "version": "1.0.0",
+  "description": "Crypto price alert service with WebSocket monitoring",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "axios": "^1.6.7"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
