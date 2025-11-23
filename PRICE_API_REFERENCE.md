@@ -176,3 +176,31 @@
   - `aggregation` (required): `[2s, 59s]`
   - `quote`, `func` (optional, default: `minmax`)
 - **External**: Yes
+
+---
+
+## Alert Message Formats
+
+### Price Threshold Alerts
+
+```
+🟢 BTC crossed $88,000
+Price: $88,250 | 24h: +4.2%
+
+🔴 ETH dropped below $3,700
+Price: $3,685 | 24h: -2.8%
+```
+
+### Volume Spike Alerts
+
+```
+⚡ BTC VOLUME SPIKE
+Price: $87,500 | Volume: 3.2x average
+```
+
+### Price Spike Alerts
+
+```
+🚀 SOL +5.3% SPIKE
+Price: $245.80
+```
