@@ -11,11 +11,11 @@ const config = {
   telegramChatId: process.env.TELEGRAM_CHAT_ID,
 
   // Alert thresholds
-  assets: (process.env.ASSETS || 'BTC,ETH,SOL').split(','),
+  assets: (process.env.ASSETS || 'BTC,ETH,SOL,XRP,ADA,DOGE,MATIC,DOT,LTC,SHIB,AVAX,LINK,UNI,ATOM,XLM,ETC,NEAR,ICP,FIL,APT,ARB,OP,INJ,SUI,SEI,TIA,PEPE,WIF,BONK,FLOKI').split(','),
   quoteCurrency: process.env.QUOTE_CURRENCY || 'USDT',
 
   // Monitoring settings
-  priceThresholds: JSON.parse(process.env.PRICE_THRESHOLDS || '{}'),
+  priceThresholds: JSON.parse(process.env.PRICE_THRESHOLDS || '{"BTC":[80000,82000,84000,86000,88000,90000,92000,94000,96000,98000,100000,102000,104000,106000,108000,110000,112000,114000,116000,118000,120000]}'),
   volumeSpikeMultiplier: parseFloat(process.env.VOLUME_SPIKE_MULTIPLIER || '2.5'),
   priceSpikePercent: parseFloat(process.env.PRICE_SPIKE_PERCENT || '5.0'),
 
