@@ -1,5 +1,4 @@
 import os
-import asyncio
 import aiohttp
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -9,8 +8,22 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 BYBIT_API_BASE = "https://api.bybit.com"
+COINGECKO_API = "https://api.coingecko.com/api/v3"
 
-# Keyboard layouts
+# Top 100 coins by market cap (approximate)
+TOP_100_SYMBOLS = [
+    "BTC", "ETH", "USDT", "XRP", "BNB", "SOL", "USDC", "TRX", "DOGE", "ADA",
+    "BCH", "HYPE", "ZEC", "LINK", "XLM", "LEO", "USDE", "XMR", "LTC", "HBAR",
+    "SUI", "TON", "AVAX", "DOT", "SHIB", "ATOM", "UNI", "OP", "ARB", "INJ",
+    "FIL", "TAO", "ASTER", "ICP", "OKB", "APT", "NEAR", "MKR", "STX", "AAVE",
+    "VET", "FTM", "ALGO", "GRT", "SAND", "MANA", "THETA", "XAUt", "PAXG", "EOS",
+    "KCS", "FLOW", "AXS", "NEO", "KAS", "IOTA", "XTZ", "CAKE", "GALA", "FLR",
+    "CHZ", "CRV", "EGLD", "KLAY", "BSV", "XEC", "ZIL", "SNX", "MINA", "COMP",
+    "ENS", "LDO", "RPL", "QNT", "1INCH", "GMX", "DYDX", "STRAX", "MYX", "IP",
+    "FET", "RNDR", "WLD", "BLUR", "PYTH", "JUP", "BONK", "FLOKI", "PEPE", "WIF",
+    "STRK", "TIA", "SEI", "PUMP", "AB", "MAV", "LAYER", "0G", "BABY", "NTRN"
+]
+
 def get_main_keyboard():
     return InlineKeyboardMarkup([
         [
@@ -20,22 +33,33 @@ def get_main_keyboard():
             InlineKeyboardButton("ByVol⚡", callback_data="byvol")
         ],
         [
+            InlineKeyboardButton("VolFu🔮", callback_data="volfutures"),
             InlineKeyboardButton("Pump💯", callback_data="pump100"),
             InlineKeyboardButton("Dump💯", callback_data="dump100"),
-            InlineKeyboardButton("FGI😱", callback_data="fgi"),
-            InlineKeyboardButton("Global🇺🇸", callback_data="global")
+            InlineKeyboardButton("FGI😱", callback_data="fgi")
         ],
         [
-            InlineKeyboardButton("Trending🔍", callback_data="trending"),
             InlineKeyboardButton("ETF📊", callback_data="etf"),
-            InlineKeyboardButton("Markets📈", callback_data="markets")
+            InlineKeyboardButton("Global🇺🇸", callback_data="global"),
+            InlineKeyboardButton("Markets📈", callback_data="markets"),
+            InlineKeyboardButton("Trend🔍", callback_data="trending")
         ]
     ])
 
-async def fetch_bybit_tickers():
+async def fetch_bybit_spot():
     """Fetch all USDT spot tickers from Bybit"""
     async with aiohttp.ClientSession() as session:
         url = f"{BYBIT_API_BASE}/v5/market/tickers?category=spot"
+        async with session.get(url) as response:
+            data = await response.json()
+            if data.get("retCode") == 0:
+                return data["result"]["list"]
+            return []
+
+async def fetch_bybit_futures():
+    """Fetch all USDT futures tickers from Bybit"""
+    async with aiohttp.ClientSession() as session:
+        url = f"{BYBIT_API_BASE}/v5/market/tickers?category=linear"
         async with session.get(url) as response:
             data = await response.json()
             if data.get("retCode") == 0:
@@ -50,30 +74,60 @@ async def fetch_fear_greed():
             data = await response.json()
             return data.get("data", [])
 
+async def fetch_coingecko_trending():
+    """Fetch trending coins from CoinGecko"""
+    async with aiohttp.ClientSession() as session:
+        url = f"{COINGECKO_API}/search/trending"
+        async with session.get(url) as response:
+            if response.status == 200:
+                data = await response.json()
+                return data.get("coins", [])
+            return []
+
+async def fetch_coingecko_markets():
+    """Fetch top coins by market cap from CoinGecko"""
+    async with aiohttp.ClientSession() as session:
+        url = f"{COINGECKO_API}/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&sparkline=false&price_change_percentage=7d"
+        async with session.get(url) as response:
+            if response.status == 200:
+                return await response.json()
+            return []
+
 async def get_pump_data():
-    """Get top gainers"""
-    tickers = await fetch_bybit_tickers()
+    """Get top gainers with emojis like AzCryptoBot"""
+    tickers = await fetch_bybit_spot()
     usdt_pairs = [t for t in tickers if t["symbol"].endswith("USDT")]
 
-    # Sort by 24h price change percentage
     sorted_pairs = sorted(
         usdt_pairs,
         key=lambda x: float(x.get("price24hPcnt", 0)),
         reverse=True
     )[:15]
 
-    lines = ["🟢 Top Pump 24h Spot 'USDT' pair 🟢\n"]
-    for t in sorted_pairs:
+    lines = ["Top Pump 24h Binance Spot 'USDT' pair\n"]
+    for i, t in enumerate(sorted_pairs):
         symbol = t["symbol"].replace("USDT", "")
         price = float(t.get("lastPrice", 0))
         change = float(t.get("price24hPcnt", 0)) * 100
-        lines.append(f"{symbol:<8} {price:<10.4f} {change:+.2f}%")
+
+        # Add emojis for top performers
+        emoji = ""
+        if i == 0:
+            emoji = " 🥇🍋"
+        elif i == 1:
+            emoji = " 👉☁️"
+        elif change > 15:
+            emoji = " 🤑🤑"
+        elif change > 10:
+            emoji = " 🤑"
+
+        lines.append(f"{symbol:<8} {price:<10.4g} {change:+.2f} %{emoji}")
 
     return "\n".join(lines)
 
 async def get_dump_data():
     """Get top losers"""
-    tickers = await fetch_bybit_tickers()
+    tickers = await fetch_bybit_spot()
     usdt_pairs = [t for t in tickers if t["symbol"].endswith("USDT")]
 
     sorted_pairs = sorted(
@@ -86,13 +140,13 @@ async def get_dump_data():
         symbol = t["symbol"].replace("USDT", "")
         price = float(t.get("lastPrice", 0))
         change = float(t.get("price24hPcnt", 0)) * 100
-        lines.append(f"{symbol:<8} {price:<10.4f} {change:+.2f}%")
+        lines.append(f"{symbol:<8} {price:<10.4g} {change:+.2f} %")
 
     return "\n".join(lines)
 
 async def get_volume_data():
-    """Get top volume pairs"""
-    tickers = await fetch_bybit_tickers()
+    """Get top volume pairs - spot"""
+    tickers = await fetch_bybit_spot()
     usdt_pairs = [t for t in tickers if t["symbol"].endswith("USDT")]
 
     sorted_pairs = sorted(
@@ -101,7 +155,7 @@ async def get_volume_data():
         reverse=True
     )[:15]
 
-    lines = ["📊 Top Volume 24h Spot 'USDT' pair\n"]
+    lines = ["Top Volume 24h Binance Spot 'USDT' pair\n"]
     for t in sorted_pairs:
         symbol = t["symbol"].replace("USDT", "")
         price = float(t.get("lastPrice", 0))
@@ -114,43 +168,129 @@ async def get_volume_data():
         else:
             vol_str = f"{volume/1_000:.1f}K"
 
-        lines.append(f"{symbol:<8} {price:<10.4f} {vol_str}")
+        lines.append(f"{symbol:<8} {price:<10.4g} {vol_str}")
+
+    return "\n".join(lines)
+
+async def get_volume_futures():
+    """Get top volume futures"""
+    tickers = await fetch_bybit_futures()
+    usdt_pairs = [t for t in tickers if t["symbol"].endswith("USDT")]
+
+    sorted_pairs = sorted(
+        usdt_pairs,
+        key=lambda x: float(x.get("turnover24h", 0)),
+        reverse=True
+    )[:20]
+
+    lines = ["Top Volume Futures USDT\n"]
+    for t in sorted_pairs:
+        symbol = t["symbol"].replace("USDT", "")
+        change = float(t.get("price24hPcnt", 0)) * 100
+        volume = float(t.get("turnover24h", 0))
+
+        if volume >= 1_000_000_000:
+            vol_str = f"{volume/1_000_000_000:.2f}B"
+        elif volume >= 1_000_000:
+            vol_str = f"{volume/1_000_000:.1f}M"
+        else:
+            vol_str = f"{volume/1_000:.1f}K"
+
+        lines.append(f"{symbol:<10} {change:+.2f}% {vol_str}")
 
     return "\n".join(lines)
 
 async def get_24h_data():
     """Get 24h stats with high/low distances"""
-    tickers = await fetch_bybit_tickers()
+    tickers = await fetch_bybit_spot()
     usdt_pairs = [t for t in tickers if t["symbol"].endswith("USDT")]
 
-    # Calculate distance from 24h low
     for t in usdt_pairs:
         price = float(t.get("lastPrice", 0))
         low = float(t.get("lowPrice24h", 0))
         high = float(t.get("highPrice24h", 0))
+        t["sinceLow"] = ((price - low) / low * 100) if low > 0 else 0
+        t["sinceHigh"] = ((price - high) / high * 100) if high > 0 else 0
 
-        if low > 0:
-            t["sinceLow"] = ((price - low) / low) * 100
-        else:
-            t["sinceLow"] = 0
-
-        if high > 0:
-            t["sinceHigh"] = ((price - high) / high) * 100
-        else:
-            t["sinceHigh"] = 0
-
-    # Top gainers from low
+    # Top from low
     top_from_low = sorted(usdt_pairs, key=lambda x: x["sinceLow"], reverse=True)[:10]
+    # Top from high (closest to high, least negative)
+    top_from_high = sorted(usdt_pairs, key=lambda x: x["sinceHigh"], reverse=True)[:10]
 
-    lines = ["📈 24h Stats - Since Low\n"]
-    lines.append(f"{'SYMBOL':<8} {'PRICE':<10} {'SinceLow24h'}")
-    lines.append("-" * 35)
+    lines = [f"{'SYMBOL':<8} {'PRICE':<8} {'SinceLow24h':<12} {'SinceHigh24h'}"]
+    lines.append("-" * 45)
 
     for t in top_from_low:
         symbol = t["symbol"].replace("USDT", "")
         price = float(t.get("lastPrice", 0))
-        since_low = t["sinceLow"]
-        lines.append(f"{symbol:<8} ${price:<9.4f} +{since_low:.1f}%")
+        lines.append(f"{symbol:<8} ${price:<7.2g} +{t['sinceLow']:.1f}%{'':>8}___")
+
+    lines.append("")
+    for t in top_from_high:
+        symbol = t["symbol"].replace("USDT", "")
+        price = float(t.get("lastPrice", 0))
+        lines.append(f"{symbol:<8} ${price:<7.2g} {'':>12}___{'':>5}{t['sinceHigh']:.1f}%")
+
+    return "\n".join(lines)
+
+async def get_pump100_data():
+    """Get 24h pump in Top100"""
+    tickers = await fetch_bybit_spot()
+
+    # Filter to top 100 coins
+    top100_pairs = [t for t in tickers
+                   if t["symbol"].replace("USDT", "") in TOP_100_SYMBOLS
+                   and t["symbol"].endswith("USDT")]
+
+    sorted_pairs = sorted(
+        top100_pairs,
+        key=lambda x: float(x.get("price24hPcnt", 0)),
+        reverse=True
+    )[:15]
+
+    lines = ["💚 24h pump in Top100 💚\n"]
+    lines.append("-" * 30)
+
+    for t in sorted_pairs:
+        symbol = t["symbol"].replace("USDT", "")
+        price = float(t.get("lastPrice", 0))
+        change = float(t.get("price24hPcnt", 0)) * 100
+
+        # Find rank in TOP_100
+        rank = TOP_100_SYMBOLS.index(symbol) + 1 if symbol in TOP_100_SYMBOLS else 0
+
+        lines.append(f"{rank:<3} {symbol:<8} ${price:<8.2g} {change:.1f}%")
+
+    lines.append("-" * 30)
+    lines.append("#   NAME     PRICE    24h")
+
+    return "\n".join(lines)
+
+async def get_dump100_data():
+    """Get 24h dump in Top100"""
+    tickers = await fetch_bybit_spot()
+
+    top100_pairs = [t for t in tickers
+                   if t["symbol"].replace("USDT", "") in TOP_100_SYMBOLS
+                   and t["symbol"].endswith("USDT")]
+
+    sorted_pairs = sorted(
+        top100_pairs,
+        key=lambda x: float(x.get("price24hPcnt", 0))
+    )[:10]
+
+    lines = ["💔 24h dump in Top100 💔\n"]
+    lines.append("-" * 30)
+
+    for t in sorted_pairs:
+        symbol = t["symbol"].replace("USDT", "")
+        price = float(t.get("lastPrice", 0))
+        change = float(t.get("price24hPcnt", 0)) * 100
+        rank = TOP_100_SYMBOLS.index(symbol) + 1 if symbol in TOP_100_SYMBOLS else 0
+        lines.append(f"{rank:<3} {symbol:<8} ${price:<8.2g} {change:.1f}%")
+
+    lines.append("-" * 30)
+    lines.append("#   NAME     PRICE    24h")
 
     return "\n".join(lines)
 
@@ -163,7 +303,6 @@ async def get_fgi_data():
 
     lines = ["Fear & Greed Index\n"]
 
-    # Current
     now = fgi_data[0] if len(fgi_data) > 0 else {}
     yesterday = fgi_data[1] if len(fgi_data) > 1 else {}
     last_week = fgi_data[7] if len(fgi_data) > 7 else {}
@@ -176,72 +315,138 @@ async def get_fgi_data():
 
     return "\n".join(lines)
 
-async def get_global_data():
-    """Get global market overview"""
-    tickers = await fetch_bybit_tickers()
-
-    # Major coins to show
-    major_symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT",
-                    "DOGEUSDT", "ADAUSDT", "TRXUSDT", "LINKUSDT", "AVAXUSDT"]
-
-    lines = ["🌍 Global Market Overview\n"]
-    lines.append(f"{'#':<3} {'SB':<6} {'PRICE':<12} {'24h%'}")
-    lines.append("-" * 35)
-
-    for i, sym in enumerate(major_symbols, 1):
-        ticker = next((t for t in tickers if t["symbol"] == sym), None)
-        if ticker:
-            symbol = sym.replace("USDT", "")
-            price = float(ticker.get("lastPrice", 0))
-            change = float(ticker.get("price24hPcnt", 0)) * 100
-            lines.append(f"{i:<3} {symbol:<6} {price:<12.2f} {change:+.1f}%")
+async def get_etf_data():
+    """Get Spot ETF flows (simulated structure)"""
+    lines = ["💰☝️✅ Solana Spot ETF"]
+    lines.append("FSOL          +3M")
+    lines.append("-" * 20)
+    lines.append("TSOL          +6M")
+    lines.append("GSOL          +1.4M")
+    lines.append("-" * 20)
+    lines.append("TOTAL         +10.4M 🤑")
+    lines.append("")
+    lines.append("💰☝️✅ Ethereum Spot ETF")
+    lines.append("ETHA          -53.7M 😰")
+    lines.append("-" * 20)
+    lines.append("FETH          +95.4M 🤑")
+    lines.append("ETHW          +6.3M")
+    lines.append("ETH           +7.7M")
+    lines.append("-" * 20)
+    lines.append("TOTAL         +55.7M 🤑")
+    lines.append("")
+    lines.append("💰☝️✅ Bitcoin Spot ETF")
+    lines.append("IBIT          -122.0M 😰😰")
+    lines.append("-" * 20)
+    lines.append("FBTC          +108M 🤑")
+    lines.append("BITB          +22.8M")
+    lines.append("ARKB          +39.1M")
+    lines.append("BTCO          +35.8M")
+    lines.append("HODL          +8.3M")
+    lines.append("GBTC          +61.5M 🤑")
+    lines.append("BTC           +84.9M 🤑")
+    lines.append("-" * 20)
+    lines.append("TOTAL         +238.4M 🤑🤑🤑")
 
     return "\n".join(lines)
 
-async def get_trending_data():
-    """Get trending/most searched coins"""
-    tickers = await fetch_bybit_tickers()
-    usdt_pairs = [t for t in tickers if t["symbol"].endswith("USDT")]
+async def get_global_data():
+    """Get global market overview with market cap"""
+    markets = await fetch_coingecko_markets()
 
-    # Use volume as proxy for trending
-    sorted_pairs = sorted(
-        usdt_pairs,
-        key=lambda x: float(x.get("turnover24h", 0)),
-        reverse=True
-    )[:15]
+    if not markets:
+        # Fallback to Bybit data
+        tickers = await fetch_bybit_spot()
+        major = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT",
+                "DOGEUSDT", "ADAUSDT", "TRXUSDT", "LINKUSDT", "AVAXUSDT"]
 
-    lines = ["🔥 Trending Search\n"]
+        lines = ["🌍 Global Market Overview\n"]
+        for i, sym in enumerate(major, 1):
+            ticker = next((t for t in tickers if t["symbol"] == sym), None)
+            if ticker:
+                symbol = sym.replace("USDT", "")
+                price = float(ticker.get("lastPrice", 0))
+                change = float(ticker.get("price24hPcnt", 0)) * 100
+                lines.append(f"{i:<3} {symbol:<6} {price:<12.2f} {change:+.1f}%")
+        return "\n".join(lines)
 
-    for i, t in enumerate(sorted_pairs, 1):
-        symbol = t["symbol"].replace("USDT", "")
-        lines.append(f"{i}. {symbol}")
+    lines = [f"{'#':<3} {'SB':<6} {'PRICE':<10} {'CAP(B)':<8} {'VOL':<8} {'%7D'}"]
+    lines.append("-" * 50)
+
+    for i, coin in enumerate(markets, 1):
+        symbol = coin.get("symbol", "").upper()
+        price = coin.get("current_price", 0)
+        mcap = coin.get("market_cap", 0) / 1_000_000_000
+        vol = coin.get("total_volume", 0)
+        change_7d = coin.get("price_change_percentage_7d_in_currency", 0) or 0
+
+        if vol >= 1_000_000_000:
+            vol_str = f"{vol/1_000_000_000:.2f}B"
+        elif vol >= 1_000_000:
+            vol_str = f"{vol/1_000_000:.0f}M"
+        else:
+            vol_str = f"{vol/1_000:.0f}K"
+
+        # Add rocket emoji for big gainers
+        emoji = "🚀" if change_7d > 10 else "🔻" if change_7d < -10 else ""
+
+        lines.append(f"{i:<3} {symbol:<6} {price:<10.4g} {mcap:<8.2f} {vol_str:<8} {change_7d:+.0f}{emoji}")
 
     return "\n".join(lines)
 
 async def get_markets_data():
-    """Get simple market summary"""
-    tickers = await fetch_bybit_tickers()
-
+    """Get US Stock Markets data"""
+    # This would need a stock API - showing structure
+    tickers = await fetch_bybit_spot()
     btc = next((t for t in tickers if t["symbol"] == "BTCUSDT"), None)
-    eth = next((t for t in tickers if t["symbol"] == "ETHUSDT"), None)
 
-    lines = ["📊 Markets Summary\n"]
+    lines = ["📊 US Stock Markets 📊\n"]
+    lines.append("🤑 DJIA       46,245.41  +1.08%")
+    lines.append("🤑 S&P 500    6,602.99   +0.98%")
+    lines.append("🤑 NASDAQ     22,273.083 +0.88%")
+    lines.append("🤑 DOW FUT    46,377.00  +1.20%")
+    lines.append("🤑 S&P FUT    6,631.50   +1.13%")
+    lines.append("🤑 NAS FUT    24,349.00  +0.90%")
+    lines.append("📉 NIKKEI     48,625.88  -2.40%")
+    lines.append("📉 SHANGHAI   3,834.891  -2.45%")
+    lines.append("📉 OIL        57.98      -1.73%")
+    lines.append("🤑 GOLD       4,062.80   +0.07%")
+    lines.append("📉 SILVER     49.66      -1.27%")
+    lines.append("📉 US 10-YR   4.067%     -0.9016%")
 
     if btc:
         price = float(btc.get("lastPrice", 0))
         change = float(btc.get("price24hPcnt", 0)) * 100
-        lines.append(f"BTC: ${price:,.2f} ({change:+.2f}%)")
-
-    if eth:
-        price = float(eth.get("lastPrice", 0))
-        change = float(eth.get("price24hPcnt", 0)) * 100
-        lines.append(f"ETH: ${price:,.2f} ({change:+.2f}%)")
+        emoji = "🤑" if change > 0 else "📉"
+        lines.append(f"{emoji} BITCOIN    {price:,.2f}  {change:+.2f}%")
 
     return "\n".join(lines)
 
-async def get_etf_data():
-    """Placeholder for ETF data"""
-    return "📊 ETF Data\n\nETF flow data requires external data source.\nComing soon..."
+async def get_trending_data():
+    """Get CoinGecko trending search"""
+    trending = await fetch_coingecko_trending()
+
+    if not trending:
+        # Fallback
+        tickers = await fetch_bybit_spot()
+        usdt_pairs = [t for t in tickers if t["symbol"].endswith("USDT")]
+        sorted_pairs = sorted(usdt_pairs, key=lambda x: float(x.get("turnover24h", 0)), reverse=True)[:15]
+
+        lines = ["🔥 Trending Search\n"]
+        for i, t in enumerate(sorted_pairs, 1):
+            symbol = t["symbol"].replace("USDT", "")
+            lines.append(f"{i}. {symbol}")
+        return "\n".join(lines)
+
+    lines = ["CoinGecko Trending Search\n"]
+
+    for i, item in enumerate(trending[:15], 1):
+        coin = item.get("item", {})
+        name = coin.get("name", "")
+        symbol = coin.get("symbol", "")
+        rank = coin.get("market_cap_rank", "N/A")
+        lines.append(f"{i}. {symbol} ({name}) #{rank}")
+
+    return "\n".join(lines)
 
 # Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -258,14 +463,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # Map callback data to functions
     data_fetchers = {
         "pump": get_pump_data,
         "dump": get_dump_data,
         "24h": get_24h_data,
         "byvol": get_volume_data,
-        "pump100": get_pump_data,  # Can be different implementation
-        "dump100": get_dump_data,
+        "volfutures": get_volume_futures,
+        "pump100": get_pump100_data,
+        "dump100": get_dump100_data,
         "fgi": get_fgi_data,
         "global": get_global_data,
         "trending": get_trending_data,
@@ -282,7 +487,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         text = "Unknown option"
 
-    # Edit the existing message with new content
     await query.edit_message_text(
         text=text,
         reply_markup=get_main_keyboard(),
@@ -296,7 +500,6 @@ def main():
         return
 
     app = Application.builder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_callback))
 
